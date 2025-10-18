@@ -1,28 +1,39 @@
 import streamlit as st
 import tensorflow as tf
 from tensorflow.keras.preprocessing.sequence import pad_sequences
-from tensorflow.keras.preprocessing.text import Tokenizer
 import numpy as np
 import pickle
+import os
 
 # ----------------------------
-# Load model and tokenizer
+# Streamlit Page Settings
+# ----------------------------
+st.set_page_config(page_title="Fake News Detection", page_icon="📰", layout="centered")
+st.title("📰 Fake News Detection using LSTM")
+st.write("This app uses a pre-trained LSTM model to detect whether a given news text is **Fake** or **Real**.")
+
+# ----------------------------
+# Helper Functions
 # ----------------------------
 @st.cache_resource
-def load_model():
-    model = tf.keras.models.load_model("fake_news_model.h5")
-    return model
+def load_model(path):
+    try:
+        model = tf.keras.models.load_model(path)
+        return model
+    except Exception as e:
+        st.error(f"❌ Error loading model: {e}")
+        return None
 
 @st.cache_resource
-def load_tokenizer():
-    # If you have a saved tokenizer file (tokenizer.pkl or similar), load it
-    with open("fake_news_tokenizer.pkl", "rb") as f:
-        tokenizer = pickle.load(f)
-    return tokenizer
+def load_tokenizer(path):
+    try:
+        with open(path, "rb") as f:
+            tokenizer = pickle.load(f)
+        return tokenizer
+    except Exception as e:
+        st.error(f"❌ Error loading tokenizer: {e}")
+        return None
 
-# ----------------------------
-# Predict function
-# ----------------------------
 def predict_news(text, model, tokenizer, max_len=200):
     seq = tokenizer.texts_to_sequences([text])
     padded = pad_sequences(seq, maxlen=max_len, padding='post', truncating='post')
@@ -31,48 +42,44 @@ def predict_news(text, model, tokenizer, max_len=200):
     return label, float(pred[0][0])
 
 # ----------------------------
-# Streamlit UI
+# Model and Tokenizer Loading
 # ----------------------------
-st.set_page_config(page_title="Fake News Detection", page_icon="📰", layout="wide")
-st.title("📰 Fake News Detection using LSTM")
-st.write("This app uses an LSTM-based neural network to detect whether a given news statement is **fake** or **real**.")
+model_path = "fake_news_model.h5"
+tokenizer_path = "fake_news_tokenizer.pkl"
 
-model = load_model()
-tokenizer = load_tokenizer()
+# Check if model and tokenizer exist
+if not os.path.exists(model_path) or not os.path.exists(tokenizer_path):
+    st.warning("⚠️ Model or tokenizer file not found. Please upload them below:")
 
-# User input
-text_input = st.text_area("✍️ Enter news text here:", height=150)
+    uploaded_model = st.file_uploader("Upload Model (.h5)", type=["h5"])
+    uploaded_tokenizer = st.file_uploader("Upload Tokenizer (.pkl)", type=["pkl"])
 
-if st.button("🔍 Detect"):
-    if text_input.strip():
-        label, score = predict_news(text_input, model, tokenizer)
-        st.subheader("Result:")
-        st.write(f"**Prediction:** {label}")
-        st.write(f"**Confidence:** {score:.2f}")
+    if uploaded_model is not None and uploaded_tokenizer is not None:
+        with open("fake_news_model_uploaded.h5", "wb") as f:
+            f.write(uploaded_model.getbuffer())
+        with open("fake_news_tokenizer_uploaded.pkl", "wb") as f:
+            f.write(uploaded_tokenizer.getbuffer())
+
+        st.success("✅ Files uploaded successfully! You can now use the model.")
+        model = load_model("fake_news_model_uploaded.h5")
+        tokenizer = load_tokenizer("fake_news_tokenizer_uploaded.pkl")
     else:
-        st.warning("Please enter some text to analyze.")
+        st.stop()
+else:
+    model = load_model(model_path)
+    tokenizer = load_tokenizer(tokenizer_path)
 
-# Optional: Upload text file
-uploaded_file = st.file_uploader("Or upload a .txt file to analyze multiple lines", type=["txt"])
-if uploaded_file is not None:
-    text_data = uploaded_file.read().decode("utf-8")
-    st.text_area("Uploaded File Content", text_data, height=200)
-    if st.button("Analyze Uploaded File"):
-        lines = text_data.strip().split("\n")
-        results = []
-        for line in lines:
-            if line.strip():
-                label, score = predict_news(line, model, tokenizer)
-                results.append((line, label, score))
-        st.write("### Results:")
-        for line, label, score in results:
-            st.write(f"**Text:** {line}")
-            st.write(f"→ {label} (Confidence: {score:.2f})")
-            st.markdown("---")
+# ----------------------------
+# Prediction UI
+# ----------------------------
+if model and tokenizer:
+    st.subheader("🔍 Enter News Text Below:")
+    text_input = st.text_area("Type or paste the news article here:", height=150)
 
-# Download section (optional)
-if 'results' in locals() and len(results) > 0:
-    import pandas as pd
-    df = pd.DataFrame(results, columns=["Text", "Prediction", "Confidence"])
-    csv = df.to_csv(index=False)
-    st.download_button("⬇️ Download Results as CSV", csv, "fake_news_results.csv", "text/csv")
+    if st.button("Detect Fake News"):
+        if text_input.strip():
+            label, confidence = predict_news(text_input, model, tokenizer)
+            st.success(f"**Prediction:** {label}")
+            st.info(f"**Confidence:** {confidence:.2f}")
+        else:
+            st.warning("Please enter some text to analyze.")
