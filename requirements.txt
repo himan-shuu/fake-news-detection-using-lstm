@@ -1,5 +1,4 @@
 streamlit
-tensorflow==2.15.0  <-- FIX 2: Specified a stable version
+tensorflow==2.15.0
 numpy
 pandas
-<-- FIX 1: Removed 'pickle' and 'pickle5' because it's built-in/redundant -->
